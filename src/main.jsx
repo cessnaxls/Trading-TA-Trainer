@@ -63,7 +63,29 @@ function qFor(li,idx,seed){
    return {type:"choice",prompt,choices:bands,answer:ans,explain:data?`${explain} Target probability: ${target}%, which falls in ${ans}.`:explain,data,end};
  };
  switch(li){
-  case 0:return m%2?probChoice("Based only on the visible evidence, which probability range best represents the chance that the next several bars resolve higher?",prob(data,end),"This target is generated consistently from trend, EMA alignment, RSI, and range location."):choice("Which is the best professional description of this chart?",["Bullish evidence exists but the outcome is uncertain","Price is guaranteed to rise","Price is guaranteed to fall","The chart proves a profitable trade"],"Bullish evidence exists but the outcome is uncertain",`The chart should be described probabilistically; current trend classification is ${z.trend}.`);
+  case 0:{
+    const last=x.close>=x.open?"closed above its open":"closed below its open";
+    const wide=(x.high-x.low) > x.atr*1.25;
+    if(m%3===0) return choice("Which statement describes only something directly visible on the chart?",[
+      `The final candle ${last}`,
+      "The next candle will definitely rise",
+      "This setup guarantees a profitable trade",
+      "The market must reverse immediately"
+    ],`The final candle ${last}`,"This lesson separates observation from prediction. The accepted answer states only a fact visible at the decision point.");
+    if(m%3===1) return choice("Which statement avoids making an unsupported prediction?",[
+      "The chart records past and current price behavior",
+      "The chart proves the next move will be higher",
+      "A red candle guarantees another red candle",
+      "The visible pattern guarantees a reversal"
+    ],"The chart records past and current price behavior","Charts display historical/current auction information. Future direction remains uncertain.");
+    return choice("What is the safest conclusion from the final candle alone?",[
+      wide?"Its range is relatively large, but the next move is still uncertain":"Its range is not unusually large, and the next move is still uncertain",
+      "It guarantees continuation",
+      "It guarantees reversal",
+      "It proves buyers will control the next several bars"
+    ],wide?"Its range is relatively large, but the next move is still uncertain":"Its range is not unusually large, and the next move is still uncertain",
+    "Lesson 1 trains observation without forecasting. Candle range can be described, but future movement cannot be guaranteed.");
+  }
   case 1:{let body=Math.abs(x.close-x.open),u=x.high-Math.max(x.open,x.close),l=Math.min(x.open,x.close)-x.low,a=body>(u+l)*1.15?"Large directional body":l>body*1.5?"Long lower-wick rejection":u>body*1.5?"Long upper-wick rejection":"Small/indecisive candle";return choice("Classify the final candle's anatomy.",["Large directional body","Long lower-wick rejection","Long upper-wick rejection","Small/indecisive candle"],a,`The final candle is ${a.toLowerCase()}.`)}
   case 2:return choice("Classify the dominant closing-price structure.",["Bullish","Bearish","Mixed/ranging"],z.trend==="bullish"?"Bullish":z.trend==="bearish"?"Bearish":"Mixed/ranging",`The visible structure is ${z.trend}.`);
   case 3:return choice("Classify the current trend.",["Bullish","Bearish","Mixed/transitional"],z.trend==="bullish"?"Bullish":z.trend==="bearish"?"Bearish":"Mixed/transitional",`The trend is ${z.trend}.`);
@@ -82,26 +104,45 @@ function qFor(li,idx,seed){
  }
 }
 function grade(q,a){return a===q.answer}
-function bank1000(){return Array.from({length:1000},(_,i)=>({...qFor(i%16,i%20,900000+i*7919),id:i,lesson:i%16}))}
+function bank1000(){return Array.from({length:1000},(_,i)=>({...qFor(i%16,i%20,900000+i*7919),id:i,lesson:i%16,topic:i%16}))}
 function Question({q,i,value,onChange,disabled,gradeResult}){
- return <div className={"question "+(gradeResult===true?"correct":gradeResult===false?"wrong":"")}><div className="qhead"><b>Question {i+1}</b>{gradeResult!=null&&<span>{gradeResult?"✓ Correct":"✕ Incorrect"}</span>}</div><Chart data={q.data} end={q.end}/><p>{q.prompt}</p>
+ return <div className={"question "+(gradeResult===true?"correct":gradeResult===false?"wrong":"")}><div className="qhead"><b>Question {i+1}{Number.isInteger(q.topic)?` • ${lessons[q.topic][0]}`:""}</b>{gradeResult!=null&&<span>{gradeResult?"✓ Correct":"✕ Incorrect"}</span>}</div><Chart data={q.data} end={q.end}/><p>{q.prompt}</p>
  <div className="choices">{q.choices.map(c=><button key={c} disabled={disabled} className={value===c?"picked":""} onClick={()=>onChange(c)}>{c}</button>)}</div>
  {gradeResult!=null&&<div className={"explain "+(gradeResult?"good":"bad")}><b>{gradeResult?"Accepted":"Resolution"}:</b> {q.explain}</div>}</div>
 }
+
+function assessmentTopic(currentLesson,index,rng){
+  // 70% of questions drill the current lesson; 30% review only already-taught material.
+  // No topic greater than currentLesson can ever be selected.
+  if(currentLesson===0 || rng()<0.70) return currentLesson;
+  return Math.floor(rng()*currentLesson);
+}
+function makeLessonAssessment(currentLesson,seed){
+  const r=seeded(seed + currentLesson*51511);
+  return Array.from({length:20},(_,k)=>{
+    const topic=assessmentTopic(currentLesson,k,r);
+    return {...qFor(topic,k,Math.floor(r()*1e9)),topic};
+  });
+}
+function makeLessonExamples(currentLesson,seed){
+  // Worked examples teach only the concept introduced in this lesson.
+  return Array.from({length:4},(_,k)=>({...qFor(currentLesson,k+12,seed+currentLesson*1000+k*997),topic:currentLesson}));
+}
+
 function App(){
  const [view,setView]=useState("course"),[selected,setSelected]=useState(0),[seed,setSeed]=useState(Date.now()%1e9),[attempt,setAttempt]=useState(null),[exam,setExam]=useState(null);
  const [progress,setProgress]=useState(()=>JSON.parse(localStorage.getItem("mca_chart_v3")||'{"scores":{},"passed":{},"attempts":{}}'));
  const bank=useMemo(()=>bank1000(),[]);
  const save=p=>{setProgress(p);localStorage.setItem("mca_chart_v3",JSON.stringify(p))},unlocked=i=>i===0||progress.passed[i-1],allPassed=lessons.every((_,i)=>progress.passed[i]);
- const examples=useMemo(()=>Array.from({length:4},(_,k)=>qFor(selected,k+12,seed+selected*1000)),[selected,seed]);
- function beginLesson(){setAttempt({qs:Array.from({length:20},(_,k)=>qFor(selected,k,seed+Math.floor(Math.random()*1e8))),answers:Array(20).fill(""),submitted:false,grades:[],score:0})}
+ const examples=useMemo(()=>makeLessonExamples(selected,seed),[selected,seed]);
+ function beginLesson(){const s=seed+Math.floor(Math.random()*1e8);setAttempt({qs:makeLessonAssessment(selected,s),answers:Array(20).fill(""),submitted:false,grades:[],score:0})}
  function submitLesson(){let grades=attempt.qs.map((q,i)=>grade(q,attempt.answers[i])),score=grades.filter(Boolean).length/20*100,p={...progress,scores:{...progress.scores,[selected]:Math.max(progress.scores[selected]||0,score)},passed:{...progress.passed},attempts:{...progress.attempts,[selected]:(progress.attempts[selected]||0)+1}};if(score>=95)p.passed[selected]=true;save(p);setAttempt({...attempt,submitted:true,grades,score})}
  function startExam(){let ids=[...Array(1000).keys()];for(let i=999;i>0;i--){let j=Math.floor(Math.random()*(i+1));[ids[i],ids[j]]=[ids[j],ids[i]]}setExam({qs:ids.slice(0,100).map(i=>bank[i]),answers:Array(100).fill(""),submitted:false,grades:[],score:0});setView("exam")}
  function submitExam(){let grades=exam.qs.map((q,i)=>grade(q,exam.answers[i])),score=grades.filter(Boolean).length,p={...progress,examBest:Math.max(progress.examBest||0,score),examPassed:(progress.examPassed||false)||score>=80};save(p);setExam({...exam,submitted:true,grades,score})}
  return <div className="app"><header><div><h1>Market Chart Academy Pro</h1><p>Chart-analysis-only mastery course</p></div><div className="status"><span>{Object.keys(progress.passed).length}/16 lessons</span><span>Exam best {progress.examBest||0}%</span></div></header>
  <nav>{["course","exam","progress"].map(v=><button key={v} className={view===v?"active":""} onClick={()=>setView(v)}>{v==="course"?"Course":v==="exam"?"Final Exam":"Progress"}</button>)}</nav>
  {view==="course"&&<div className="layout"><aside className="panel side"><h3>Mastery path</h3>{lessons.map((l,i)=><button key={i} disabled={!unlocked(i)} className={selected===i?"sel":""} onClick={()=>{setSelected(i);setAttempt(null)}}><b>{progress.passed[i]?"✓":i+1}</b><span>{l[0]}<small>{!unlocked(i)?"Locked":progress.passed[i]?`Passed ${fmt(progress.scores[i],0)}%`:"Unlocked"}</small></span></button>)}</aside>
- <main><section className="panel hero"><span>LESSON {selected+1}</span><h2>{lessons[selected][0]}</h2>{lessons[selected][1].split("\n\n").map((p,i)=><p key={i}>{p}</p>)}<div className="rule"><b>Pass requirement: 95%</b><small>20 randomized chart-analysis questions. Every question is multiple choice.</small></div></section>
+ <main><section className="panel hero"><span>LESSON {selected+1}</span><h2>{lessons[selected][0]}</h2>{lessons[selected][1].split("\n\n").map((p,i)=><p key={i}>{p}</p>)}<div className="rule"><b>Pass requirement: 95%</b><small>20 randomized multiple-choice chart questions. About 70% drill this lesson; the rest review only material from earlier lessons. Future concepts never appear.</small></div></section>
  <section className="panel"><div className="sectionTitle"><div><span>RANDOMIZED WORKED EXAMPLES</span><h2>Chart examples</h2></div><button onClick={()=>setSeed(Date.now()%1e9)}>Randomize</button></div>{examples.map((q,i)=><div className="example" key={i}><h3>Example {i+1}</h3><Chart data={q.data} end={q.end}/><p><b>Question:</b> {q.prompt}</p><p className="solution"><b>Solution:</b> {q.explain}</p></div>)}</section>
  <section className="panel"><div className="sectionTitle"><div><span>MASTERY ASSESSMENT</span><h2>{attempt?"20 chart questions":"Ready"}</h2></div>{!attempt&&<button className="primary" onClick={beginLesson}>Begin</button>}</div>
  {attempt&&<>{attempt.qs.map((q,i)=><Question key={i} q={q} i={i} value={attempt.answers[i]} disabled={attempt.submitted} gradeResult={attempt.submitted?attempt.grades[i]:null} onChange={v=>{let a=[...attempt.answers];a[i]=v;setAttempt({...attempt,answers:a})}}/>)}{!attempt.submitted?<button className="primary full" onClick={submitLesson}>Submit lesson</button>:<div className={"result "+(attempt.score>=95?"pass":"fail")}><h2>{attempt.score}%</h2><p>{attempt.score>=95?"Passed. The next lesson is unlocked.":"Not passed. 95% is required."}</p><button onClick={beginLesson}>New randomized attempt</button></div>}</>}</section></main></div>}
