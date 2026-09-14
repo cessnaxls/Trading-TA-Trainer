@@ -1,10 +1,1 @@
-{
-  "name": "Market Chart Academy",
-  "short_name": "Chart Academy",
-  "description": "Touch-first technical analysis training simulator.",
-  "start_url": "/",
-  "display": "standalone",
-  "background_color": "#08111f",
-  "theme_color": "#08111f",
-  "icons": []
-}
+{"name":"Market Chart Academy Pro","short_name":"Chart Academy","start_url":"/","display":"standalone","background_color":"#08111f","theme_color":"#08111f","icons":[]}

@@ -1,31 +1,31 @@
-# Market Chart Academy Pro
+# Market Chart Academy Pro — Chart-Only Edition
 
-iPad-first React/Vite technical-analysis mastery course for GitHub + Render.
+This version removes:
+- percentage-change questions
+- open-ended/free-response questions
+- abstract non-chart trivia
 
-## Mastery system
-- 16 sequential lessons.
-- Every lesson contains multi-paragraph instruction.
-- 4 randomized worked examples per lesson.
-- 20 randomized graded exercises per lesson.
-- 95% required to unlock the next lesson.
-- Numerical sliders use ±5 percentage-point tolerance.
-- Incorrect answers show resolutions/explanations.
-- Progress persists in localStorage.
+Every graded item is based on a randomized chart.
+
+## Question types
+- chart classification / interpretation buttons
+- probability sliders based on visible chart evidence
+
+## Course
+- 16 sequential lessons
+- multi-paragraph instruction
+- 4 randomized worked chart examples per lesson
+- 20 randomized chart-analysis questions per lesson
+- 95% required to unlock the next lesson
+- probability sliders graded within ±5 percentage points
 
 ## Final exam
-- Locked until all lessons pass.
-- 100 open-response questions per attempt.
-- Drawn randomly from a generated 1,000-question bank.
-- Includes open-ended concepts, randomized charts, chart interpretation, numerical probability sliders, and calculations.
-- No multiple choice.
-- 80% passing score.
-- Slider tolerance ±5 percentage points.
+- unlocked only after all lessons pass
+- 100 randomized chart-analysis questions
+- drawn from a 1,000-question chart-analysis bank
+- 80% required to pass
+- no free response
+- no percent-change math
 
 ## Deploy
-```bash
-npm install
-npm run build
-```
-Render can use the included `render.yaml`. Publish directory: `dist`.
-
-Educational only; technical analysis is probabilistic and not a guarantee of profit.
+Push to GitHub and connect to Render. The included `render.yaml` builds with Vite and publishes `dist`.

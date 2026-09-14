@@ -1,234 +1,109 @@
-import React, {useEffect, useMemo, useRef, useState} from "react";
-import { createRoot } from "react-dom/client";
-import "./styles.css";
 
-const clamp=(v,a,b)=>Math.max(a,Math.min(b,v));
-const fmt=(v,d=2)=>Number.isFinite(v)?v.toFixed(d):"—";
-const norm=s=>String(s??"").toLowerCase().replace(/[^a-z0-9.%+\- ]/g," ").replace(/\s+/g," ").trim();
-const seeded=(seed=1)=>{let x=seed>>>0;return()=>((x=(1664525*x+1013904223)>>>0)/4294967296)};
+import React,{useEffect,useMemo,useRef,useState}from"react";
+import{createRoot}from"react-dom/client";
+import"./styles.css";
+
+const clamp=(v,a,b)=>Math.max(a,Math.min(b,v)),fmt=(v,d=2)=>Number.isFinite(v)?v.toFixed(d):"—";
+const seeded=(s=1)=>{let x=s>>>0;return()=>((x=(1664525*x+1013904223)>>>0)/4294967296)};
 const gauss=r=>{let u=0,v=0;while(!u)u=r();while(!v)v=r();return Math.sqrt(-2*Math.log(u))*Math.cos(2*Math.PI*v)};
 function ema(v,n){let a=2/(n+1),p=v[0];return v.map((x,i)=>(p=i?x*a+p*(1-a):x))}
 function rsi(c,n=14){let o=Array(c.length).fill(50),g=0,l=0;for(let i=1;i<c.length;i++){let d=c[i]-c[i-1],up=Math.max(d,0),dn=Math.max(-d,0);if(i<=n){g+=up/n;l+=dn/n}else{g=(g*(n-1)+up)/n;l=(l*(n-1)+dn)/n}if(i>=n)o[i]=l===0?100:100-100/(1+g/l)}return o}
 function atr(d,n=14){let tr=d.map((x,i)=>i?Math.max(x.high-x.low,Math.abs(x.high-d[i-1].close),Math.abs(x.low-d[i-1].close)):x.high-x.low),p=tr[0];return tr.map((x,i)=>(p=i?(p*(n-1)+x)/n:x))}
-function market(seed=1,n=260){
-  const r=seeded(seed), out=[]; let close=100, anchor=100, regime="range", left=0;
-  for(let i=0;i<n;i++){
-    if(left<=0){regime=["up","down","range","compress","volatile"][Math.floor(r()*5)];left=28+Math.floor(r()*55);anchor=close} left--;
-    let drift=0,vol=.008;if(regime==="up")drift=.0015;if(regime==="down")drift=-.0014;if(regime==="range")drift=(anchor-close)/close*.08;if(regime==="compress")vol=.0035;if(regime==="volatile")vol=.018;
-    let ret=drift+gauss(r)*vol, open=close*(1+gauss(r)*.002); close=Math.max(5,close*(1+ret));
-    let spr=close*(.003+r()*.009), high=Math.max(open,close)+spr*r(), low=Math.max(.1,Math.min(open,close)-spr*r());
-    out.push({open,high,low,close,volume:Math.round((4e5+r()*1.2e6)*(1+Math.abs(ret)*20)),regime});
-  }
-  let c=out.map(x=>x.close),e9=ema(c,9),e20=ema(c,20),e50=ema(c,50),rr=rsi(c),aa=atr(out);
-  return out.map((x,i)=>({...x,ema9:e9[i],ema20:e20[i],ema50:e50[i],rsi:rr[i],atr:aa[i]}));
+function market(seed=1,n=180){
+ const r=seeded(seed),out=[];let close=100,anchor=100,reg="range",left=0;
+ for(let i=0;i<n;i++){if(left<=0){reg=["up","down","range","compress","volatile"][Math.floor(r()*5)];left=25+Math.floor(r()*50);anchor=close}left--;
+  let drift=0,vol=.008;if(reg==="up")drift=.0015;if(reg==="down")drift=-.0014;if(reg==="range")drift=(anchor-close)/close*.07;if(reg==="compress")vol=.0035;if(reg==="volatile")vol=.018;
+  let ret=drift+gauss(r)*vol,open=close*(1+gauss(r)*.002);close=Math.max(5,close*(1+ret));let spr=close*(.003+r()*.009),high=Math.max(open,close)+spr*r(),low=Math.max(.1,Math.min(open,close)-spr*r());
+  out.push({open,high,low,close,volume:Math.round((4e5+r()*1.2e6)*(1+Math.abs(ret)*20))});
+ }
+ let c=out.map(x=>x.close),e9=ema(c,9),e20=ema(c,20),e50=ema(c,50),rr=rsi(c),aa=atr(out);
+ return out.map((x,i)=>({...x,ema9:e9[i],ema20:e20[i],ema50:e50[i],rsi:rr[i],atr:aa[i]}));
 }
-function describe(d,i){
-  const x=d[i], p=d[Math.max(0,i-20)], ret=x.close/p.close-1;
-  return {
-    trend:x.close>x.ema20&&x.ema20>x.ema50?"bullish":x.close<x.ema20&&x.ema20<x.ema50?"bearish":"mixed",
-    momentum:x.rsi>=60?"strong":x.rsi<=40?"weak":"neutral",
-    ret20:ret, atrp:x.atr/x.close
-  };
+function info(d,end){
+ const x=d[end],w=d.slice(end-34,end+1),support=Math.min(...w.map(x=>x.low)),resistance=Math.max(...w.map(x=>x.high)),pos=(x.close-support)/(resistance-support||1);
+ const trend=x.close>x.ema20&&x.ema20>x.ema50?"bullish":x.close<x.ema20&&x.ema20<x.ema50?"bearish":"mixed";
+ const atrp=x.atr/x.close, vols=d.slice(end-20,end).map(x=>x.volume),avg=vols.reduce((a,b)=>a+b,0)/vols.length,vr=x.volume/avg;
+ return{x,support,resistance,pos,trend,atrp,vr};
 }
-function Chart({data,end=90,reveal=0,height=250}){
-  const ref=useRef(null),[w,setW]=useState(700);
-  useEffect(()=>{let o=new ResizeObserver(([e])=>setW(e.contentRect.width));if(ref.current)o.observe(ref.current);return()=>o.disconnect()},[]);
-  const start=Math.max(0,end-59),last=Math.min(data.length-1,end+reveal),vis=data.slice(start,last+1),known=end-start+1;
-  const lo=Math.min(...vis.map(x=>x.low))*.997, hi=Math.max(...vis.map(x=>x.high))*1.003,pad=14, pw=w-54, ph=height-30;
-  const X=i=>pad+(i+.5)*pw/vis.length,Y=p=>10+(hi-p)/(hi-lo)*ph,step=pw/vis.length;
-  return <div ref={ref} className="miniChart"><svg width={w} height={height}>
-    <rect width={w} height={height} rx="12" className="chartBg"/>
-    {[0,1,2,3,4].map(k=><line key={k} x1={pad} x2={pad+pw} y1={10+k*ph/4} y2={10+k*ph/4} className="grid"/>)}
-    {vis.map((d,i)=>{let up=d.close>=d.open,bw=Math.max(2,step*.55);return <g key={i} opacity={i>=known?0.82:1}>
-      <line x1={X(i)} x2={X(i)} y1={Y(d.high)} y2={Y(d.low)} className={up?"wick up":"wick down"}/>
-      <rect x={X(i)-bw/2} y={Math.min(Y(d.open),Y(d.close))} width={bw} height={Math.max(1,Math.abs(Y(d.open)-Y(d.close)))} className={up?"candle up":"candle down"}/>
-    </g>})}
-    {reveal>0&&<><rect x={pad+known*step} y="10" width={Math.max(0,(vis.length-known)*step)} height={ph} className="futureShade"/><line x1={pad+known*step} x2={pad+known*step} y1="10" y2={10+ph} className="decisionLine"/></>}
-  </svg></div>
+function prob(d,end){
+ const z=info(d,end),x=z.x;let s=0;if(z.trend==="bullish")s+=2;if(z.trend==="bearish")s-=2;if(x.ema9>x.ema20)s+=.8;else s-=.8;if(x.rsi>58&&x.rsi<75)s+=.8;if(x.rsi<42&&x.rsi>25)s-=.8;if(z.pos>.86)s-=.45;if(z.pos<.14)s+=.45;
+ return Math.round(clamp(100/(1+Math.exp(-s/2.3)),20,80));
 }
-
+function Chart({data,end=110}){
+ const ref=useRef(null),[w,setW]=useState(700);useEffect(()=>{let o=new ResizeObserver(([e])=>setW(e.contentRect.width));if(ref.current)o.observe(ref.current);return()=>o.disconnect()},[]);
+ let start=Math.max(0,end-59),v=data.slice(start,end+1),lo=Math.min(...v.map(x=>x.low))*.997,hi=Math.max(...v.map(x=>x.high))*1.003,H=250,p=12,pw=w-48,ph=H-30,X=i=>p+(i+.5)*pw/v.length,Y=q=>10+(hi-q)/(hi-lo)*ph,step=pw/v.length;
+ return <div ref={ref} className="chart"><svg width={w} height={H}><rect width={w} height={H} rx="12" className="bg"/>{[0,1,2,3,4].map(k=><line key={k} x1={p} x2={p+pw} y1={10+k*ph/4} y2={10+k*ph/4} className="grid"/>)}
+ {v.map((d,i)=>{let up=d.close>=d.open,bw=Math.max(2,step*.55);return <g key={i}><line x1={X(i)} x2={X(i)} y1={Y(d.high)} y2={Y(d.low)} className={up?"wick up":"wick down"}/><rect x={X(i)-bw/2} y={Math.min(Y(d.open),Y(d.close))} width={bw} height={Math.max(1,Math.abs(Y(d.open)-Y(d.close)))} className={up?"candle up":"candle down"}/></g>})}</svg></div>
+}
 const lessons=[
-["Chart literacy","A chart is a historical record of an auction, not a prophecy. Your job is to separate observations from interpretations and then convert interpretations into conditional probabilities. Price, time, range, volume, and location are evidence; none of them individually guarantee the next move.\n\nProfessionals continuously distinguish what is known from what is inferred. “Price closed above yesterday’s high” is observable. “Price must continue higher” is not. This lesson trains disciplined chart description before prediction."],
-["Candlestick anatomy","Candlesticks encode open, high, low, and close. Bodies reveal net movement between open and close while wicks reveal excursions that did not persist through the close. Large bodies imply directional displacement; long wicks can imply rejection, but only in context.\n\nA hammer at support after exhaustion can matter more than an identical hammer in the middle of noise. Candle interpretation should always incorporate preceding trend, location, volatility, and subsequent confirmation."],
-["Line-chart structure","Line charts emphasize closing-price structure by removing intrabar detail. They are useful for identifying swing progression, trend slope, ranges, compression, and major turning points without being distracted by individual wicks.\n\nUse line charts to answer structural questions first, then candles to inspect execution detail. A clean sequence of higher closes and higher swing lows often communicates trend more clearly than dozens of individual candles."],
-["Trend & swings","An uptrend is best described by persistent higher swing highs and higher swing lows; a downtrend by lower highs and lower lows. Moving averages can summarize trend but should not replace structure analysis.\n\nTrends mature, weaken, and transition. A broken swing does not automatically reverse the trend, but repeated failure to extend plus structural violation raises the probability of transition or range."],
-["Support & resistance","Support and resistance are zones where prior order flow caused meaningful response. Treat them as areas rather than exact single-price lines because real markets rarely reverse at a mathematically perfect tick.\n\nThe quality of a level depends on context: prior reactions, approach speed, time spent at the level, volume, and whether price is rejected or accepted beyond it. Repeated testing can either validate a level or consume resting liquidity."],
-["Breakouts","A breakout is acceptance beyond a prior boundary, not merely a wick through it. Stronger breakouts often combine a meaningful level, decisive close, expanding participation, and follow-through.\n\nFailed breakouts are equally important. A move outside a range that quickly returns inside can trap continuation traders and create fuel in the opposite direction. Confirmation reduces false-breakout risk but never eliminates it."],
-["Moving averages","Moving averages smooth price and help summarize direction and trend alignment. Short EMAs react quickly; longer averages react slowly. Price above a rising fast EMA above a rising slow EMA is evidence of trend health.\n\nCrossovers are lagging by design and frequently whipsaw in ranges. Their usefulness increases when combined with structure, location, and volatility rather than treated as standalone signals."],
-["RSI & momentum","RSI compares recent gains and losses to estimate momentum. Overbought does not mean price must fall and oversold does not mean price must rise. Strong trends can remain extreme for extended periods.\n\nUse RSI to evaluate momentum regime, acceleration, and divergence. An elevated RSI within a healthy uptrend can confirm strength, while weakening RSI during marginal new highs can warn that momentum is no longer confirming price."],
-["Volatility & ATR","ATR estimates recent trading range and therefore expected movement magnitude, not direction. High ATR means outcomes are more dispersed; low ATR suggests compression and smaller recent movement.\n\nVolatility changes how every setup should be interpreted. A one-dollar move is enormous for a quiet ten-dollar stock and insignificant for a volatile thousand-dollar stock. Normalize movement whenever possible."],
-["Volume","Volume is a proxy for participation. Expanding volume can strengthen the informational value of a breakout or reversal, while weak volume can make a move less convincing.\n\nVolume must be interpreted with price response. High volume plus little directional progress may imply absorption. High volume plus large range and close near the extreme may imply forceful acceptance."],
-["Ranges & mean reversion","Ranges are two-sided auctions in which neither side maintains sustained control. Location becomes especially important: trades or forecasts near range extremes often have better asymmetry than opinions formed in the middle.\n\nMean reversion works until regime changes. A range boundary that repeatedly rejects price can eventually break; therefore always distinguish fading an extreme from blindly assuming every extreme must revert."],
-["Compression & expansion","Volatility often cycles between compression and expansion. Tight ranges, declining ATR, and reduced candle size indicate stored uncertainty, but compression itself does not reveal direction.\n\nDirection should be inferred from the break and its confirmation. The key skill is recognizing when the probability of a large move is rising while remaining agnostic about direction until evidence appears."],
-["Confluence","Confluence means multiple genuinely distinct pieces of evidence support the same scenario. Trend, structure, location, volume, and volatility can provide independent context; five oscillators derived from the same closes do not provide five independent votes.\n\nThe objective is not to accumulate indicators. It is to combine nonredundant evidence into a coherent probability estimate and identify what evidence would invalidate that estimate."],
-["Probability & calibration","Technical analysis is probabilistic. A good analyst assigns probabilities to competing outcomes and remains comfortable being wrong on individual cases. A 60% event should occur about 60% of the time over a sufficiently large comparable sample.\n\nCalibration penalizes unjustified certainty. Saying 95% bullish and being wrong is much worse than saying 55% bullish and being wrong. Forecast quality therefore depends on both discrimination and confidence."],
-["Expected value & risk","Prediction accuracy is not the same as profitability. Expected value combines probability with payoff magnitude. A system can win frequently yet lose money if average losses dominate average wins.\n\nRisk should be considered relative to volatility and invalidation. Technical analysis identifies scenarios; risk management decides whether a scenario is worth taking and how much exposure is appropriate."],
-["Integrated analysis","Professional analysis integrates regime, structure, location, momentum, volatility, participation, and competing scenarios. No single candle or indicator gets veto power over the entire chart.\n\nThe final skill is process discipline: analyze only information visible at the decision point, assign probabilities, define invalidation, reveal the outcome, and review process separately from luck."]
+["Chart literacy","A chart is a historical auction record, not a prophecy. Professional analysis begins by describing visible facts before assigning directional meaning. Trend, location, volatility, momentum, and participation are evidence; none guarantee the next move.\n\nYour job is to build conditional probabilities from what is visible now. The most important discipline is avoiding certainty language when the chart only supports a bias."],
+["Candlestick anatomy","Candles show open, high, low, and close. Bodies show net displacement while wicks show rejected excursions. A large body can represent directional force; a long wick can represent rejection.\n\nCandle shape alone is never enough. Location, preceding structure, volatility, and confirmation determine whether the pattern deserves weight."],
+["Line-chart structure","Line charts emphasize closing-price structure and suppress intrabar noise. This makes swing progression, range boundaries, trend slope, and compression easier to see.\n\nUse closing structure to identify the larger auction state before relying on individual candle detail."],
+["Trend & swings","Healthy uptrends tend to produce higher highs and higher lows; downtrends tend to produce lower highs and lower lows. Moving averages help summarize the same process but lag price.\n\nThe skill is identifying continuation, weakening, and transition rather than calling every broken swing a reversal."],
+["Support & resistance","Support and resistance are zones where prior order flow produced a meaningful response. They should be treated as areas, not perfect single-price lines.\n\nAsk how price approached the zone, whether it was rejected or accepted beyond it, and whether repeated tests are strengthening or consuming the level."],
+["Breakouts","A breakout is sustained acceptance outside a prior boundary, not simply a wick through it. Stronger breakouts usually show decisive closes, participation, and follow-through.\n\nFailed breakouts matter because trapped continuation traders can accelerate movement back through the old range."],
+["Moving averages","Moving averages summarize trend direction and alignment. Price above fast above medium above slow is bullish evidence; the inverse is bearish evidence.\n\nCrossovers lag and can whipsaw in ranges, so they should confirm structure rather than replace it."],
+["RSI & momentum","RSI measures recent momentum. Overbought does not mean price must reverse, and oversold does not mean price must rally.\n\nUse RSI to classify strength, weakness, neutrality, and potential divergence while respecting the broader trend."],
+["Volatility & ATR","ATR measures recent range, not direction. High ATR means wider expected movement; low ATR indicates compression.\n\nVolatility changes how much confidence and risk should be attached to every setup."],
+["Volume","Volume is a participation measure. Expanding volume can make a breakout or rejection more meaningful; weak volume can make a move less convincing.\n\nAlways interpret participation together with price response."],
+["Ranges & mean reversion","Ranges are two-sided auctions. Location matters greatly: the middle usually offers less useful asymmetry than the boundaries.\n\nMean reversion is a regime behavior, not a law. A tested boundary can eventually break."],
+["Compression & expansion","Markets often alternate between volatility compression and expansion. Tight ranges and declining ATR can signal increasing potential for a larger move.\n\nCompression predicts possible expansion, not its direction. Direction comes from the eventual break and confirmation."],
+["Confluence","Confluence combines genuinely different evidence: structure, location, momentum, volatility, and participation.\n\nDo not count several indicators derived from the same price series as independent votes."],
+["Probability & calibration","Chart analysis is probabilistic. The objective is to assign sensible confidence to competing outcomes, not to be certain.\n\nA 60% forecast should resolve correctly about 60% of the time over enough comparable cases. Overconfidence is a forecasting error."],
+["Risk context","Good chart reading does not eliminate uncertainty. High volatility and unclear structure should generally reduce conviction or position size.\n\nRisk should adapt to uncertainty and invalidation rather than rely on a fixed arbitrary percentage."],
+["Integrated analysis","Professional chart reading integrates regime, structure, location, momentum, volatility, participation, and competing scenarios.\n\nThe final habit is to form a bias, quantify confidence, define what would change your mind, and judge the process separately from the outcome."]
 ];
 
-const keyFor=(li,variant)=>{
-  const base=[
-    ["historical record","auction","observation","probability"],
-    ["open","high","low","close","wick","body"],
-    ["closing","structure","swing","trend"],
-    ["higher high","higher low","lower high","lower low"],
-    ["zone","support","resistance","rejection","acceptance"],
-    ["breakout","close","follow through","failed breakout"],
-    ["moving average","ema","lag","trend"],
-    ["rsi","momentum","overbought","oversold"],
-    ["atr","volatility","range","direction"],
-    ["volume","participation","absorption"],
-    ["range","mean reversion","boundary","middle"],
-    ["compression","expansion","volatility","direction"],
-    ["confluence","independent","evidence","redundant"],
-    ["probability","calibration","confidence","brier"],
-    ["expected value","probability","payoff","risk"],
-    ["regime","structure","location","momentum","volatility","volume"]
-  ][li];
-  return base;
-};
-function accepted(text,keys,min=1){let n=norm(text);return keys.filter(k=>n.includes(norm(k))).length>=min}
-
-function lessonQuestion(li,idx,seed){
-  const r=seeded(seed+li*10007+idx*193), data=market(Math.floor(r()*1e9),150), end=80+Math.floor(r()*45), info=describe(data,end);
-  const type=idx%5;
-  if(type===0){
-    const prompts=[
-      `In one or two sentences, state the central principle of ${lessons[li][0]} without claiming certainty.`,
-      `Explain what evidence from ${lessons[li][0]} can tell you and what it cannot guarantee.`,
-      `Name the most important analytical mistake this lesson is designed to prevent.`
-    ];
-    return {type:"text",prompt:prompts[idx%prompts.length],keys:keyFor(li),min:1,explain:lessons[li][1].split("\n\n")[0]};
-  }
-  if(type===1){
-    const target= li===13 ? Math.round(45+r()*35) : li===8 ? Math.round(1+r()*4)*10 : Math.round(40+r()*40);
-    const prompt=li===13?`A setup belongs to a class that historically resolves upward ${target}% of the time. Set the probability you should assign to “up” before considering any new evidence.`:
-      li===8?`ATR is ${(target/10).toFixed(1)}% of price. Set the ATR percentage on the slider.`:
-      `A historical sample shows ${target} successes out of 100 comparable cases. Set the empirical success probability.`;
-    return {type:"slider",prompt,target,min:0,max:100,unit:"%",explain:`The target is ${target}%. Slider answers within ±5 percentage points receive credit.`};
-  }
-  if(type===2){
-    let ans=info.trend;
-    return {type:"chartText",prompt:"Classify the current trend as bullish, bearish, or mixed using the visible chart and structure.",data,end,keys:[ans],min:1,explain:`At the decision point the EMA/price alignment classifies this generated case as ${ans}.`};
-  }
-  if(type===3){
-    const pct=Math.round(Math.abs(info.ret20)*1000)/10;
-    return {type:"math",prompt:`Price moved from $${fmt(data[end-20].close)} to $${fmt(data[end].close)}. Calculate the approximate percentage change. Enter a signed percentage (for example, -3.2 or 4.1).`,target:info.ret20*100,tol:0.5,explain:`Percentage change = (new ÷ old − 1) × 100 = ${fmt(info.ret20*100,2)}%.`};
-  }
-  return {type:"chartText",prompt:`Using this chart, identify one relevant ${li%2===0?"trend/structure":"risk/context"} observation from the lesson.`,data,end,keys:keyFor(li),min:1,explain:`Acceptable answers use lesson vocabulary and tie it to visible evidence. Key concepts include: ${keyFor(li).join(", ")}.`};
-}
-
-function exampleFor(li,idx,seed){
- const q=lessonQuestion(li,idx+5,seed);
- return {...q,example:true};
-}
-function gradeQ(q,answer){
- if(q.type==="slider")return Math.abs(Number(answer)-q.target)<=5;
- if(q.type==="math")return Number.isFinite(Number(answer))&&Math.abs(Number(answer)-q.target)<=q.tol;
- return accepted(answer,q.keys,q.min||1);
-}
-
-function makeBank(){
- const bank=[];
- for(let i=0;i<1000;i++){
-   let li=i%16, mode=i%10, r=seeded(900000+i*37), data=market(50000+i*331,170),end=90+Math.floor(r()*45),info=describe(data,end);
-   if(mode<=2){
-     const prompts=[
-       `Explain the most important principle of ${lessons[li][0]} in professional, probabilistic language.`,
-       `Describe one common analytical error associated with ${lessons[li][0]} and how to avoid it.`,
-       `Define ${lessons[li][0]} in practical chart-reading terms.`
-     ];
-     bank.push({id:i,type:"text",lesson:li,prompt:prompts[mode],keys:keyFor(li),min:1,explain:lessons[li][1].split("\n\n")[0]});
-   } else if(mode<=5){
-     let t=mode===3?"trend":mode===4?"momentum":"volatility";
-     let answer=t==="trend"?info.trend:t==="momentum"?info.momentum:(info.atrp>.018?"high":info.atrp<.008?"compressed":"normal");
-     bank.push({id:i,type:"chartText",lesson:li,prompt:`Study the randomized chart. State the current ${t} classification and briefly justify it.`,data,end,keys:[answer,...keyFor(li)],min:1,explain:`The generated chart's primary ${t} classification is ${answer}.`});
-   } else if(mode<=7){
-     let target=25+Math.floor(r()*66);
-     bank.push({id:i,type:"slider",lesson:li,prompt:`A dataset contains 100 comparable historical cases and ${target} resolved in the stated direction. Set the empirical probability of that outcome.`,target,min:0,max:100,unit:"%",explain:`${target}/100 = ${target}%. ±5 percentage points is accepted.`});
-   } else {
-     let old=50+r()*150, change=-.12+r()*.24, neu=old*(1+change);
-     bank.push({id:i,type:"math",lesson:li,prompt:`A price changes from $${fmt(old)} to $${fmt(neu)}. Enter the percentage change, signed and rounded to one decimal if desired.`,target:change*100,tol:.5,explain:`(new ÷ old − 1) × 100 = ${fmt(change*100,2)}%.`});
-   }
+function qFor(li,idx,seed){
+ const r=seeded(seed+li*10007+idx*193),data=market(Math.floor(r()*1e9)),end=100+Math.floor(r()*35),z=info(data,end),x=z.x,m=idx%6;
+ const choice=(prompt,choices,answer,explain)=>({type:"choice",prompt,choices,answer,explain,data,end});
+ const slider=(prompt,target,explain)=>({type:"slider",prompt,target,min:0,max:100,unit:"%",explain,data,end});
+ switch(li){
+  case 0:return m%2?slider("Based only on the visible evidence, set a reasonable probability that the next several bars resolve higher.",prob(data,end),"This target is generated consistently from trend, EMA alignment, RSI, and range location; ±5 points is accepted."):choice("Which is the best professional description of this chart?",["Bullish evidence exists but the outcome is uncertain","Price is guaranteed to rise","Price is guaranteed to fall","The chart proves a profitable trade"],"Bullish evidence exists but the outcome is uncertain",`The chart should be described probabilistically; current trend classification is ${z.trend}.`);
+  case 1:{let body=Math.abs(x.close-x.open),u=x.high-Math.max(x.open,x.close),l=Math.min(x.open,x.close)-x.low,a=body>(u+l)*1.15?"Large directional body":l>body*1.5?"Long lower-wick rejection":u>body*1.5?"Long upper-wick rejection":"Small/indecisive candle";return choice("Classify the final candle's anatomy.",["Large directional body","Long lower-wick rejection","Long upper-wick rejection","Small/indecisive candle"],a,`The final candle is ${a.toLowerCase()}.`)}
+  case 2:return choice("Classify the dominant closing-price structure.",["Bullish","Bearish","Mixed/ranging"],z.trend==="bullish"?"Bullish":z.trend==="bearish"?"Bearish":"Mixed/ranging",`The visible structure is ${z.trend}.`);
+  case 3:return choice("Classify the current trend.",["Bullish","Bearish","Mixed/transitional"],z.trend==="bullish"?"Bullish":z.trend==="bearish"?"Bearish":"Mixed/transitional",`The trend is ${z.trend}.`);
+  case 4:{let a=z.pos<.25?"Near support":z.pos>.75?"Near resistance":"Mid-range";return choice("Where is price located within the recent visible range?",["Near support","Mid-range","Near resistance"],a,`Price is ${Math.round(z.pos*100)}% of the way from recent support to resistance.`)}
+  case 5:{let near=z.pos>.83,strong=x.close>x.open&&x.close>x.high-(x.high-x.low)*.25,a=near&&strong?"Potential breakout pressure":near?"Resistance test without strong acceptance":"No immediate resistance breakout setup";return choice("Which breakout interpretation fits best?",["Potential breakout pressure","Resistance test without strong acceptance","No immediate resistance breakout setup"],a,a+".")}
+  case 6:{let a=x.close>x.ema9&&x.ema9>x.ema20&&x.ema20>x.ema50?"Bullishly aligned":x.close<x.ema9&&x.ema9<x.ema20&&x.ema20<x.ema50?"Bearishly aligned":"Mixed";return choice("How are price and the moving averages aligned?",["Bullishly aligned","Bearishly aligned","Mixed"],a,`Alignment is ${a.toLowerCase()}.`)}
+  case 7:{let a=x.rsi>=70?"Overbought/strong momentum":x.rsi<=30?"Oversold/weak momentum":x.rsi>55?"Positive momentum":x.rsi<45?"Negative momentum":"Neutral momentum";return choice(`RSI is ${fmt(x.rsi,0)}. Which interpretation fits best?`,["Overbought/strong momentum","Oversold/weak momentum","Positive momentum","Negative momentum","Neutral momentum"],a,a+".")}
+  case 8:{let a=z.atrp>.018?"High volatility":z.atrp<.008?"Compressed volatility":"Normal volatility";return choice("Classify the volatility regime.",["High volatility","Normal volatility","Compressed volatility"],a,`ATR is ${fmt(z.atrp*100,2)}% of price.`)}
+  case 9:{let a=z.vr>1.35?"Expanding participation":z.vr<.7?"Weak participation":"Normal participation";return choice("How does final-bar volume compare with recent participation?",["Expanding participation","Normal participation","Weak participation"],a,`Final volume is ${fmt(z.vr,2)}× the recent average.`)}
+  case 10:{let a=z.pos<.2?"Lower range extreme":z.pos>.8?"Upper range extreme":"Middle of range";return choice("For a range framework, where is price located?",["Lower range extreme","Middle of range","Upper range extreme"],a,`Price is at ${Math.round(z.pos*100)}% of the visible range.`)}
+  case 11:{let a=z.atrp<.008?"Compression":z.atrp>.018?"Expansion/high volatility":"Neither extreme";return choice("Which volatility-cycle state fits best?",["Compression","Expansion/high volatility","Neither extreme"],a,a+".")}
+  case 12:{let b=(z.trend==="bullish")+(x.rsi>55)+(x.ema9>x.ema20),s=(z.trend==="bearish")+(x.rsi<45)+(x.ema9<x.ema20),a=b>=2&&b>s?"Bullish confluence":s>=2&&s>b?"Bearish confluence":"Mixed evidence";return choice("Do the visible factors create directional confluence?",["Bullish confluence","Bearish confluence","Mixed evidence"],a,a+".")}
+  case 13:return slider("Assign the probability that the next several bars resolve higher based only on the displayed evidence.",prob(data,end),"The target uses a consistent training model from visible trend, EMA alignment, RSI, and range location; ±5 points is accepted.");
+  case 14:return choice("Which risk statement best matches this chart?",["Higher volatility should generally reduce conviction or size","Risk no longer matters when indicators agree","Every stop should be exactly 1% away","The next move is certain"],"Higher volatility should generally reduce conviction or size",`ATR is ${fmt(z.atrp*100,2)}% of price, so risk should adapt to volatility.`);
+  default:{let p=prob(data,end);return m<3?choice("Choose the best integrated market read.",["Bullish bias","Bearish bias","Mixed/neutral"],p>=57?"Bullish bias":p<=43?"Bearish bias":"Mixed/neutral",`Integrated probability target is ${p}%.`):slider("After integrating the entire chart, assign the probability of an upside resolution.",p,"±5 percentage points is accepted.")}
  }
- return bank;
 }
-
+function grade(q,a){return q.type==="slider"?Math.abs(Number(a)-q.target)<=5:a===q.answer}
+function bank1000(){return Array.from({length:1000},(_,i)=>({...qFor(i%16,i%20,900000+i*7919),id:i,lesson:i%16}))}
+function Question({q,i,value,onChange,disabled,gradeResult}){
+ return <div className={"question "+(gradeResult===true?"correct":gradeResult===false?"wrong":"")}><div className="qhead"><b>Question {i+1}</b>{gradeResult!=null&&<span>{gradeResult?"✓ Correct":"✕ Incorrect"}</span>}</div><Chart data={q.data} end={q.end}/><p>{q.prompt}</p>
+ {q.type==="slider"?<div className="slider"><input type="range" min="0" max="100" value={value===""?50:value} disabled={disabled} onChange={e=>onChange(+e.target.value)}/><input type="number" value={value} disabled={disabled} onChange={e=>onChange(e.target.value)}/><span>%</span></div>:<div className="choices">{q.choices.map(c=><button key={c} disabled={disabled} className={value===c?"picked":""} onClick={()=>onChange(c)}>{c}</button>)}</div>}
+ {gradeResult!=null&&<div className={"explain "+(gradeResult?"good":"bad")}><b>{gradeResult?"Accepted":"Resolution"}:</b> {q.explain}</div>}</div>
+}
 function App(){
- const [view,setView]=useState("course"),[selected,setSelected]=useState(0),[seed,setSeed]=useState(()=>Date.now()%1e9);
- const [progress,setProgress]=useState(()=>JSON.parse(localStorage.getItem("mca_course_v2")||'{"scores":{},"passed":{},"attempts":{}}'));
- const [attempt,setAttempt]=useState(null),[exam,setExam]=useState(null);
- const bank=useMemo(()=>makeBank(),[]);
- const save=p=>{setProgress(p);localStorage.setItem("mca_course_v2",JSON.stringify(p))};
- const unlocked=i=>i===0||progress.passed[i-1];
- const allPassed=lessons.every((_,i)=>progress.passed[i]);
-
- function beginLesson(i){
-   const qs=Array.from({length:20},(_,k)=>lessonQuestion(i,k,seed+Math.floor(Math.random()*1e8)));
-   setAttempt({lesson:i,qs,answers:Array(20).fill(""),submitted:false,score:0,grades:[]});
- }
- function submitLesson(){
-   let grades=attempt.qs.map((q,i)=>gradeQ(q,attempt.answers[i])), score=grades.filter(Boolean).length/grades.length*100, li=attempt.lesson;
-   let p={...progress,scores:{...progress.scores,[li]:Math.max(progress.scores[li]||0,score)},passed:{...progress.passed},attempts:{...progress.attempts,[li]:(progress.attempts[li]||0)+1}};
-   if(score>=95)p.passed[li]=true; save(p); setAttempt({...attempt,submitted:true,score,grades});
- }
- function startExam(){
-   let ids=[...Array(1000).keys()];for(let i=ids.length-1;i>0;i--){let j=Math.floor(Math.random()*(i+1));[ids[i],ids[j]]=[ids[j],ids[i]]}
-   let qs=ids.slice(0,100).map(id=>bank[id]);setExam({qs,answers:Array(100).fill(""),submitted:false,score:0,grades:[]});setView("exam");
- }
- function submitExam(){
-   let g=exam.qs.map((q,i)=>gradeQ(q,exam.answers[i])),score=g.filter(Boolean).length;
-   setExam({...exam,submitted:true,score,grades:g});
-   let p={...progress,examBest:Math.max(progress.examBest||0,score),examPassed:(progress.examPassed||false)||score>=80};save(p);
- }
- const L=lessons[selected], examples=useMemo(()=>Array.from({length:4},(_,i)=>exampleFor(selected,i,seed+selected*100)),[selected,seed]);
-
- return <div className="app">
-   <header><div className="brand"><div className="logo">M</div><div><h1>Market Chart Academy Pro</h1><p>Mastery-gated technical analysis course + 100-question certification exam</p></div></div><div className="headerStats"><span><b>{Object.keys(progress.passed).length}/16</b> lessons passed</span><span><b>{progress.examBest||0}%</b> exam best</span></div></header>
-   <nav className="tabs"><button className={view==="course"?"active":""} onClick={()=>setView("course")}>Course</button><button className={view==="exam"?"active":""} onClick={()=>setView("exam")}>Final Exam</button><button className={view==="progress"?"active":""} onClick={()=>setView("progress")}>Progress</button></nav>
-
-   {view==="course"&&<div className="courseLayout">
-     <aside className="card courseNav"><span className="eyebrow">MASTERY PATH</span>{lessons.map((l,i)=><button key={i} disabled={!unlocked(i)} className={selected===i?"selected":""} onClick={()=>{if(unlocked(i)){setSelected(i);setAttempt(null)}}}>
-       <span className="n">{progress.passed[i]?"✓":i+1}</span><span><b>{l[0]}</b><small>{!unlocked(i)?"Locked":progress.passed[i]?`Passed • ${fmt(progress.scores[i],0)}%`:"Unlocked"}</small></span>
-     </button>)}<button className="regen" onClick={()=>setSeed(Date.now()%1e9)}>↻ Randomize examples</button></aside>
-     <main className="lessonMain">
-       <section className="card lessonHero"><span className="eyebrow">LESSON {selected+1} OF 16</span><h2>{L[0]}</h2>{L[1].split("\n\n").map((p,i)=><p key={i}>{p}</p>)}<div className="masteryRule"><b>Mastery requirement: 95%</b><span>20 randomized exercises. Slider questions accept ±5 percentage points. A score below 95% generates a new attempt.</span></div></section>
-       <section className="card examples"><div className="sectionTitle"><div><span className="eyebrow">RANDOMIZED WORKED EXAMPLES</span><h2>Examples regenerate with the lesson</h2></div></div>
-         {examples.map((q,i)=><div className="worked" key={i}><h3>Example {i+1}</h3>{q.data&&<Chart data={q.data} end={q.end}/>}<p><b>Prompt:</b> {q.prompt}</p><p className="solution"><b>Worked solution:</b> {q.explain}</p></div>)}
-       </section>
-       <section className="card exercises">
-         <div className="sectionTitle"><div><span className="eyebrow">MASTERY EXERCISES</span><h2>{attempt?`Attempt • ${attempt.qs.length} questions`:"Ready for randomized assessment"}</h2></div>{!attempt&&<button className="primary" onClick={()=>beginLesson(selected)}>Begin lesson assessment</button>}</div>
-         {attempt&&<>{attempt.qs.map((q,i)=><Question key={i} q={q} i={i} value={attempt.answers[i]} disabled={attempt.submitted} onChange={v=>{let a=[...attempt.answers];a[i]=v;setAttempt({...attempt,answers:a})}} grade={attempt.submitted?attempt.grades[i]:null}/>)}
-           {!attempt.submitted?<button className="primary big" onClick={submitLesson}>Submit lesson for mastery score</button>:<div className={"resultBox "+(attempt.score>=95?"pass":"fail")}><h2>{fmt(attempt.score,0)}%</h2><p>{attempt.score>=95?"Passed. The next lesson is now unlocked.":"Not yet passed. Review the solutions and generate a fresh attempt; 95% is required."}</p><button className="primary" onClick={()=>beginLesson(selected)}>New randomized attempt</button>{attempt.score>=95&&selected<15&&<button className="ghost" onClick={()=>{setSelected(selected+1);setAttempt(null)}}>Continue to next lesson</button>}</div>}
-         </>}
-       </section>
-     </main>
-   </div>}
-
-   {view==="exam"&&<section className="examWrap">
-     {!allPassed?<div className="card lockedExam"><h2>Final exam locked</h2><p>Pass all 16 lessons at 95% or higher before attempting the certification exam.</p><div className="bigProgress"><i style={{width:`${Object.keys(progress.passed).length/16*100}%`}}/></div><b>{Object.keys(progress.passed).length}/16 lessons complete</b></div>:
-     !exam?<div className="card lockedExam"><span className="eyebrow">FINAL CERTIFICATION</span><h2>100-question open-response exam</h2><p>Each attempt randomly draws 100 questions from a 1,000-question bank. The bank includes randomized charts, fill-in/open-response concepts, chart interpretation, probability sliders, and mathematical questions.</p><p><b>Passing score: 80%.</b> Slider inputs receive credit within ±5 percentage points. Mathematical items specify their numerical tolerance. There are no multiple-choice questions.</p><button className="primary big" onClick={startExam}>Generate 100-question exam</button></div>:
-     <div className="card examPaper"><div className="sectionTitle"><div><span className="eyebrow">CERTIFICATION EXAM</span><h2>100 randomized open-response questions</h2></div>{!exam.submitted&&<div className="examCount">{exam.answers.filter(x=>String(x).trim()!=="").length}/100 answered</div>}</div>
-       {exam.qs.map((q,i)=><Question key={q.id} q={q} i={i} value={exam.answers[i]} disabled={exam.submitted} onChange={v=>{let a=[...exam.answers];a[i]=v;setExam({...exam,answers:a})}} grade={exam.submitted?exam.grades[i]:null}/>)}
-       {!exam.submitted?<button className="primary big" onClick={submitExam}>Submit final exam</button>:<div className={"resultBox "+(exam.score>=80?"pass":"fail")}><h2>{exam.score}%</h2><p>{exam.score>=80?"PASS — You met the 80% certification standard.":"FAIL — Review the solutions and take a new randomized exam when ready."}</p><button className="primary" onClick={startExam}>Generate another 100-question exam</button></div>}
-     </div>}
-   </section>}
-
-   {view==="progress"&&<section className="progress"><div className="statCards"><div className="card"><small>Lessons passed</small><b>{Object.keys(progress.passed).length}/16</b></div><div className="card"><small>Exam best</small><b>{progress.examBest||0}%</b></div><div className="card"><small>Certification</small><b>{progress.examPassed?"Passed":"Not yet"}</b></div></div>
-     <div className="card progressTable"><h2>Lesson mastery</h2>{lessons.map((l,i)=><div className="progRow" key={i}><span>{i+1}. {l[0]}</span><b>{progress.scores[i]!=null?`${fmt(progress.scores[i],0)}%`:"—"}</b><small>{progress.attempts[i]||0} attempts</small><em>{progress.passed[i]?"PASSED":unlocked(i)?"UNLOCKED":"LOCKED"}</em></div>)}</div>
-   </section>}
-   <footer>Educational training software only. Chart analysis is probabilistic and cannot guarantee profitable outcomes. Synthetic randomized charts prevent look-ahead memorization.</footer>
- </div>
-}
-
-function Question({q,i,value,onChange,disabled,grade}){
- return <div className={"question "+(grade===true?"correct":grade===false?"wrong":"")}><div className="qHead"><b>Question {i+1}</b>{grade!=null&&<span>{grade?"✓ Correct":"✕ Incorrect"}</span>}</div>{q.data&&<Chart data={q.data} end={q.end}/>}<p>{q.prompt}</p>
-   {q.type==="slider"?<div className="sliderAnswer"><input type="range" min={q.min??0} max={q.max??100} value={value===""?50:value} disabled={disabled} onChange={e=>onChange(+e.target.value)}/><input type="number" value={value} disabled={disabled} onChange={e=>onChange(e.target.value)}/><span>{q.unit||""}</span></div>:
-   q.type==="math"?<input className="textAnswer short" type="number" step=".1" value={value} disabled={disabled} onChange={e=>onChange(e.target.value)} placeholder="Enter numerical answer"/>:
-   <textarea className="textAnswer" value={value} disabled={disabled} onChange={e=>onChange(e.target.value)} placeholder="Type your open-ended answer…"/>}
-   {grade===false&&<div className="explain"><b>Resolution / solution:</b> {q.explain}</div>}{grade===true&&<div className="explain good"><b>Accepted.</b> {q.explain}</div>}
- </div>
+ const [view,setView]=useState("course"),[selected,setSelected]=useState(0),[seed,setSeed]=useState(Date.now()%1e9),[attempt,setAttempt]=useState(null),[exam,setExam]=useState(null);
+ const [progress,setProgress]=useState(()=>JSON.parse(localStorage.getItem("mca_chart_v3")||'{"scores":{},"passed":{},"attempts":{}}'));
+ const bank=useMemo(()=>bank1000(),[]);
+ const save=p=>{setProgress(p);localStorage.setItem("mca_chart_v3",JSON.stringify(p))},unlocked=i=>i===0||progress.passed[i-1],allPassed=lessons.every((_,i)=>progress.passed[i]);
+ const examples=useMemo(()=>Array.from({length:4},(_,k)=>qFor(selected,k+12,seed+selected*1000)),[selected,seed]);
+ function beginLesson(){setAttempt({qs:Array.from({length:20},(_,k)=>qFor(selected,k,seed+Math.floor(Math.random()*1e8))),answers:Array(20).fill(""),submitted:false,grades:[],score:0})}
+ function submitLesson(){let grades=attempt.qs.map((q,i)=>grade(q,attempt.answers[i])),score=grades.filter(Boolean).length/20*100,p={...progress,scores:{...progress.scores,[selected]:Math.max(progress.scores[selected]||0,score)},passed:{...progress.passed},attempts:{...progress.attempts,[selected]:(progress.attempts[selected]||0)+1}};if(score>=95)p.passed[selected]=true;save(p);setAttempt({...attempt,submitted:true,grades,score})}
+ function startExam(){let ids=[...Array(1000).keys()];for(let i=999;i>0;i--){let j=Math.floor(Math.random()*(i+1));[ids[i],ids[j]]=[ids[j],ids[i]]}setExam({qs:ids.slice(0,100).map(i=>bank[i]),answers:Array(100).fill(""),submitted:false,grades:[],score:0});setView("exam")}
+ function submitExam(){let grades=exam.qs.map((q,i)=>grade(q,exam.answers[i])),score=grades.filter(Boolean).length,p={...progress,examBest:Math.max(progress.examBest||0,score),examPassed:(progress.examPassed||false)||score>=80};save(p);setExam({...exam,submitted:true,grades,score})}
+ return <div className="app"><header><div><h1>Market Chart Academy Pro</h1><p>Chart-analysis-only mastery course</p></div><div className="status"><span>{Object.keys(progress.passed).length}/16 lessons</span><span>Exam best {progress.examBest||0}%</span></div></header>
+ <nav>{["course","exam","progress"].map(v=><button key={v} className={view===v?"active":""} onClick={()=>setView(v)}>{v==="course"?"Course":v==="exam"?"Final Exam":"Progress"}</button>)}</nav>
+ {view==="course"&&<div className="layout"><aside className="panel side"><h3>Mastery path</h3>{lessons.map((l,i)=><button key={i} disabled={!unlocked(i)} className={selected===i?"sel":""} onClick={()=>{setSelected(i);setAttempt(null)}}><b>{progress.passed[i]?"✓":i+1}</b><span>{l[0]}<small>{!unlocked(i)?"Locked":progress.passed[i]?`Passed ${fmt(progress.scores[i],0)}%`:"Unlocked"}</small></span></button>)}</aside>
+ <main><section className="panel hero"><span>LESSON {selected+1}</span><h2>{lessons[selected][0]}</h2>{lessons[selected][1].split("\n\n").map((p,i)=><p key={i}>{p}</p>)}<div className="rule"><b>Pass requirement: 95%</b><small>20 randomized chart-analysis questions. No open-ended questions. No percent-change questions. Probability sliders accept ±5 percentage points.</small></div></section>
+ <section className="panel"><div className="sectionTitle"><div><span>RANDOMIZED WORKED EXAMPLES</span><h2>Chart examples</h2></div><button onClick={()=>setSeed(Date.now()%1e9)}>Randomize</button></div>{examples.map((q,i)=><div className="example" key={i}><h3>Example {i+1}</h3><Chart data={q.data} end={q.end}/><p><b>Question:</b> {q.prompt}</p><p className="solution"><b>Solution:</b> {q.explain}</p></div>)}</section>
+ <section className="panel"><div className="sectionTitle"><div><span>MASTERY ASSESSMENT</span><h2>{attempt?"20 chart questions":"Ready"}</h2></div>{!attempt&&<button className="primary" onClick={beginLesson}>Begin</button>}</div>
+ {attempt&&<>{attempt.qs.map((q,i)=><Question key={i} q={q} i={i} value={attempt.answers[i]} disabled={attempt.submitted} gradeResult={attempt.submitted?attempt.grades[i]:null} onChange={v=>{let a=[...attempt.answers];a[i]=v;setAttempt({...attempt,answers:a})}}/>)}{!attempt.submitted?<button className="primary full" onClick={submitLesson}>Submit lesson</button>:<div className={"result "+(attempt.score>=95?"pass":"fail")}><h2>{attempt.score}%</h2><p>{attempt.score>=95?"Passed. The next lesson is unlocked.":"Not passed. 95% is required."}</p><button onClick={beginLesson}>New randomized attempt</button></div>}</>}</section></main></div>}
+ {view==="exam"&&<section className="exam">{!allPassed?<div className="panel lock"><h2>Final exam locked</h2><p>Pass all 16 lessons at 95% or better first.</p></div>:!exam?<div className="panel lock"><h2>100-question chart-analysis final</h2><p>Each attempt draws 100 questions from a 1,000-question bank. Every item is built around a randomized chart. Response types are chart interpretation/classification and probability sliders only.</p><p><b>Passing score: 80%.</b> Slider tolerance: ±5 percentage points.</p><button className="primary full" onClick={startExam}>Generate exam</button></div>:<div className="panel"><h2>Final exam</h2>{exam.qs.map((q,i)=><Question key={q.id} q={q} i={i} value={exam.answers[i]} disabled={exam.submitted} gradeResult={exam.submitted?exam.grades[i]:null} onChange={v=>{let a=[...exam.answers];a[i]=v;setExam({...exam,answers:a})}}/>)}{!exam.submitted?<button className="primary full" onClick={submitExam}>Submit final exam</button>:<div className={"result "+(exam.score>=80?"pass":"fail")}><h2>{exam.score}%</h2><p>{exam.score>=80?"PASS":"FAIL — 80% required"}</p><button onClick={startExam}>New randomized exam</button></div>}</div>}</section>}
+ {view==="progress"&&<section className="panel progress"><h2>Progress</h2>{lessons.map((l,i)=><div className="row" key={i}><span>{i+1}. {l[0]}</span><b>{progress.scores[i]!=null?`${fmt(progress.scores[i],0)}%`:"—"}</b><em>{progress.passed[i]?"PASSED":unlocked(i)?"UNLOCKED":"LOCKED"}</em></div>)}</section>}
+ <footer>Educational only. Technical analysis is probabilistic and cannot guarantee future market direction or profit.</footer></div>
 }
 createRoot(document.getElementById("root")).render(<App/>);
-
-if("serviceWorker"in navigator){window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}))}
+if("serviceWorker"in navigator)window.addEventListener("load",()=>navigator.serviceWorker.register("/sw.js").catch(()=>{}));
