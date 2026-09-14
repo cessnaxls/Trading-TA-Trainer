@@ -1,31 +1,27 @@
-# Market Chart Academy Pro — Chart-Only Edition
+# Market Chart Academy Pro — All Multiple Choice
 
-This version removes:
-- percentage-change questions
+Every graded item is now:
+- based on a randomized chart
+- multiple choice
+
+Removed:
 - open-ended/free-response questions
-- abstract non-chart trivia
-
-Every graded item is based on a randomized chart.
-
-## Question types
-- chart classification / interpretation buttons
-- probability sliders based on visible chart evidence
+- percent-change questions
+- numerical sliders
 
 ## Course
 - 16 sequential lessons
 - multi-paragraph instruction
-- 4 randomized worked chart examples per lesson
-- 20 randomized chart-analysis questions per lesson
+- randomized worked chart examples
+- 20 randomized multiple-choice chart-analysis questions per lesson
 - 95% required to unlock the next lesson
-- probability sliders graded within ±5 percentage points
 
 ## Final exam
-- unlocked only after all lessons pass
-- 100 randomized chart-analysis questions
-- drawn from a 1,000-question chart-analysis bank
-- 80% required to pass
-- no free response
-- no percent-change math
+- unlocked after all lessons are passed
+- 100 randomized multiple-choice chart-analysis questions
+- drawn from a 1,000-question bank
+- 80% passing score
+- probability-estimation questions use probability ranges such as 41–60% or 61–80%
 
 ## Deploy
 Push to GitHub and connect to Render. The included `render.yaml` builds with Vite and publishes `dist`.
