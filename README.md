@@ -29,3 +29,13 @@ Worked examples in each lesson demonstrate that lesson's newly introduced materi
 
 ## Deploy
 Push to GitHub and connect to Render. The included `render.yaml` builds with Vite and publishes `dist`.
+
+## 3.1 chart-question synchronization
+- Every graded item now selects a chart presentation mode from the concept being tested.
+- Closing-structure questions use a closing-price line chart rather than hidden EMA state.
+- Moving-average questions visibly plot EMA 9/20/50.
+- RSI questions include an RSI panel with 30/70 references and the current value.
+- ATR/volatility questions include ATR as a percent of price with training thresholds shown.
+- Volume questions include visible volume bars and a recent-average reference.
+- Support/resistance, range-location, breakout, probability, and integrated-analysis items show the relevant range boundaries and/or indicators used by their answer logic.
+- Worked examples use the same synchronized renderer as assessment questions.

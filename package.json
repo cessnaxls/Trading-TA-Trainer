@@ -1,7 +1,7 @@
 {
   "name":"market-chart-academy-pro",
   "private":true,
-  "version":"3.0.0",
+  "version":"3.1.0",
   "type":"module",
   "scripts":{"dev":"vite","build":"vite build","preview":"vite preview"},
   "dependencies":{"@vitejs/plugin-react":"^4.3.4","vite":"^6.1.0","react":"^19.0.0","react-dom":"^19.0.0"}
